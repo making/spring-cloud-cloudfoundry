@@ -21,6 +21,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.cloud.cloudfoundry.CloudFoundryService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,20 +30,42 @@ import org.springframework.context.annotation.Configuration;
  * @author Josh Long
  */
 @Configuration
-@ConditionalOnClass(CloudFoundryOperations.class)
 @ConditionalOnProperty(value = "spring.cloud.cloudfoundry.discovery.enabled", matchIfMissing = true)
 @EnableConfigurationProperties(CloudFoundryDiscoveryProperties.class)
 public class CloudFoundryDiscoveryClientConfiguration {
 
-	@Bean
-	@ConditionalOnMissingBean(CloudFoundryDiscoveryClient.class)
-	public CloudFoundryDiscoveryClient cloudFoundryDiscoveryClient(
-			CloudFoundryOperations cf, CloudFoundryService svc) {
-		return new CloudFoundryDiscoveryClient(cf, svc);
+	@Configuration
+	@ConditionalOnClass(CloudFoundryOperations.class)
+	@ConditionalOnProperty(value = "spring.cloud.cloudfoundry.discovery.use-dns", havingValue = "false", matchIfMissing = true)
+	public static class CloudFoundryDiscoveryClientConfig {
+		@Bean
+		@ConditionalOnMissingBean(DiscoveryClient.class)
+		public CloudFoundryDiscoveryClient cloudFoundryDiscoveryClient(
+				CloudFoundryOperations cf, CloudFoundryService svc) {
+			return new CloudFoundryDiscoveryClient(cf, svc);
+		}
+
+		@Bean
+		public CloudFoundryHeartbeatSender cloudFoundryHeartbeatSender(
+				CloudFoundryDiscoveryClient client) {
+			return new CloudFoundryHeartbeatSender(client);
+		}
 	}
 
-	@Bean
-	public CloudFoundryHeartbeatSender cloudFoundryHeartbeatSender(CloudFoundryDiscoveryClient client) {
-		return new CloudFoundryHeartbeatSender(client);
+	@Configuration
+	@ConditionalOnProperty(value = "spring.cloud.cloudfoundry.discovery.use-dns", havingValue = "true")
+	public static class DnsBasedCloudFoundryDiscoveryClientConfig {
+		@Bean
+		@ConditionalOnMissingBean(DiscoveryClient.class)
+		public DiscoveryClient cloudFoundryDiscoveryClient(
+				ServiceIdToHostnameConverter serviceIdToHostnameConverter) {
+			return new DnsBasedCloudFoundryDiscoveryClient(serviceIdToHostnameConverter);
+		}
+
+		@Bean
+		@ConditionalOnMissingBean
+		public ServiceIdToHostnameConverter serviceIdToHostnameConverter() {
+			return new DefaultServiceIdToHostnameConverter();
+		}
 	}
 }
